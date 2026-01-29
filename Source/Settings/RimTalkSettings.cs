@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Multiplayer.API;
+using RimTalk.Multiplayer;
 using RimTalk.Data;
 using RimTalk.Prompt;
 using UnityEngine;
@@ -36,7 +38,20 @@ public class RimTalkSettings : ModSettings
     public bool AllowOtherFactionsToTalk = false;
     public bool AllowEnemiesToTalk = false;
     public bool AllowCustomConversation = true;
-    public Settings.PlayerDialogueMode PlayerDialogueMode = Settings.PlayerDialogueMode.Manual;
+
+    private Settings.PlayerDialogueMode _playerDialogueMode = Settings.PlayerDialogueMode.Manual;
+    public Settings.PlayerDialogueMode PlayerDialogueMode
+    {
+        get
+        {
+            // Force disable in multiplayer
+            if (MpCompatShim.IsInMultiplayer)
+                return Settings.PlayerDialogueMode.Disabled;
+            return _playerDialogueMode;
+        }
+        set => _playerDialogueMode = value;
+    }
+
     public string PlayerName = "Player";
     public bool ContinueDialogueWhileSleeping = false;
     public bool AllowBabiesToTalk = true;
@@ -67,6 +82,11 @@ public class RimTalkSettings : ModSettings
     /// <returns>The active ApiConfig, or null if no valid configuration is found.</returns>
     public ApiConfig GetActiveConfig()
     {
+        // In multiplayer client mode, skip validation and return null
+        // (client doesn't need API config)
+        if (MpCompatShim.IsInMultiplayer && !MpCompatShim.IsHosting)
+            return null;
+
         if (UseSimpleConfig)
         {
             if (!string.IsNullOrWhiteSpace(SimpleApiKey))
@@ -175,7 +195,7 @@ public class RimTalkSettings : ModSettings
         Scribe_Values.Look(ref AllowOtherFactionsToTalk, "allowOtherFactionsToTalk", false);
         Scribe_Values.Look(ref AllowEnemiesToTalk, "allowEnemiesToTalk", false);
         Scribe_Values.Look(ref AllowCustomConversation, "allowCustomConversation", true);
-        Scribe_Values.Look(ref PlayerDialogueMode, "playerDialogueMode", Settings.PlayerDialogueMode.Manual);
+        Scribe_Values.Look(ref _playerDialogueMode, "playerDialogueMode", Settings.PlayerDialogueMode.Manual);
         Scribe_Values.Look(ref PlayerName, "playerName", "Player");
         
         Scribe_Values.Look(ref ContinueDialogueWhileSleeping, "continueDialogueWhileSleeping", false);

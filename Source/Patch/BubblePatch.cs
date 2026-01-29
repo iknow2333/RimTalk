@@ -3,6 +3,8 @@ using System.Linq;
 using Bubbles.Core;
 using HarmonyLib;
 using RimTalk.Data;
+using Multiplayer.API;
+using RimTalk.Multiplayer;
 using RimTalk.Patches;
 using RimTalk.Service;
 using RimTalk.Source.Data;
@@ -19,6 +21,9 @@ public static class Bubbler_Add
 
     public static bool Prefix(LogEntry entry)
     {
+        // Completely disable bubbles in multiplayer
+        if (MpCompatShim.IsInMultiplayer)
+            return false;
         RimTalkSettings settings = Settings.Get();
 
         Pawn initiator = (Pawn)entry.GetConcerns().First();

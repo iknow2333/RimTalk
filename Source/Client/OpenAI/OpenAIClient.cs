@@ -5,7 +5,10 @@ using System.Text;
 using System.Threading.Tasks;
 using RimTalk.Data;
 using RimTalk.Error;
+using RimTalk.Multiplayer;
 using RimTalk.Util;
+using Multiplayer.API;
+using MP = Multiplayer.API.MP;
 using UnityEngine.Networking;
 using Verse;
 
@@ -116,6 +119,13 @@ public class OpenAIClient(
 
     private async Task<string> SendRequestAsync(string jsonContent, DownloadHandler downloadHandler)
     {
+        // Block API calls from clients in multiplayer
+        if (MP.IsInMultiplayer && !MP.IsHosting)
+        {
+            Logger.Warning("[RimTalk] Client attempted to call API, blocking");
+            throw new Exception("Clients cannot call AI API in multiplayer");
+        }
+
         if (string.IsNullOrEmpty(_endpointUrl))
         {
             Logger.Error("Endpoint URL is missing.");

@@ -3,7 +3,9 @@ using RimTalk.Data;
 using RimTalk.Source.Data;
 using RimTalk.UI;
 using RimTalk.Util;
+using RimTalk.Multiplayer;
 using Verse;
+using MP = Multiplayer.API.MP;
 using Cache = RimTalk.Data.Cache;
 
 namespace RimTalk.Service;
@@ -66,7 +68,7 @@ public static class CustomDialogueService
             recipientState.AddTalkRequest(message, initiator, TalkType.User);
 
         ApiLog apiLog = ApiHistory.AddUserHistory(initiator, recipient, message);
-        
+
         if (initiator.IsPlayer())
         {
             apiLog.SpokenTick = GenTicks.TicksGame;

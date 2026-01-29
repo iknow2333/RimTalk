@@ -46,7 +46,7 @@ public class Overlay : MapComponent
     private const float DropdownWidth = 200f;
     private const float DropdownHeight = 220f;
     private const int MaxMessagesInLog = 10;
-    private const float TextPadding = 5f; 
+    private const float TextPadding = 5f;
 
     public Overlay(Map map) : base(map)
     {
@@ -94,22 +94,22 @@ public class Overlay : MapComponent
                 string pawnName = message.Name ?? "Unknown";
                 string dialogue = message.Response ?? "";
                 string formattedName = $"[{pawnName}]";
-                
+
                 float nameWidth = Text.CalcSize(formattedName).x;
                 float availableDialogueWidth = contentWidth - nameWidth - TextPadding;
-                
+
                 if (availableDialogueWidth < 0)
                 {
                     availableDialogueWidth = contentWidth * 0.5f;
                 }
-                
+
                 const float safetyMargin = 3f;
                 float dialogueWidthForCalc = Mathf.Max(0f, availableDialogueWidth - safetyMargin);
-                
+
                 float dialogueHeight = Text.CalcHeight(dialogue, dialogueWidthForCalc);
                 float nameHeight = Text.CalcHeight(formattedName, nameWidth);
                 float lineHeight = Mathf.Max(dialogueHeight, nameHeight);
-                
+
                 lineHeight += 2f;
 
                 var foundPawn = Cache.GetByName(pawnName)?.Pawn ??
@@ -161,7 +161,7 @@ public class Overlay : MapComponent
         _gearIconScreenRect.Set(currentOverlayRect.xMax - iconSize - 5f, currentOverlayRect.y + 2f, iconSize, iconSize);
 
         float dropdownY = _gearIconScreenRect.yMax;
-        
+
         // Check if the dropdown would go off the bottom of the screen
         if (dropdownY + DropdownHeight > Verse.UI.screenHeight)
         {
@@ -171,8 +171,8 @@ public class Overlay : MapComponent
 
         _settingsDropdownRect.Set(
             _gearIconScreenRect.x - DropdownWidth + _gearIconScreenRect.width,
-            dropdownY, 
-            DropdownWidth, 
+            dropdownY,
+            DropdownWidth,
             DropdownHeight
         );
 
@@ -183,7 +183,7 @@ public class Overlay : MapComponent
         HandleInput(ref currentOverlayRect);
 
         bool isMouseOver = Mouse.IsOver(currentOverlayRect);
-        
+
         GUI.BeginGroup(currentOverlayRect);
         var inRect = new Rect(Vector2.zero, currentOverlayRect.size);
 
@@ -338,9 +338,9 @@ public class Overlay : MapComponent
             settings.IsEnabled = value;
             settings.Write();
         });
-        
+
         listing.Gap(6);
-        
+
         bool overlayDrawAboveUI = settings.OverlayDrawAboveUI;
         listing.CheckboxLabeled("RimTalk.Overlay.DrawAboveUI".Translate(), ref overlayDrawAboveUI);
         if (overlayDrawAboveUI != settings.OverlayDrawAboveUI)

@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using HarmonyLib;
+using Multiplayer.API;
+using RimTalk.Multiplayer;
 using RimTalk.UI;
 using RimTalk.Util;
 using RimWorld;
@@ -43,6 +45,10 @@ public static class FloatMenuPatch
     /// </summary>
     private static void TryAddTalkOption(List<FloatMenuOption> result, Pawn selectedPawn, Vector3 clickPos)
     {
+        // Disable right-click menu in multiplayer
+        if (MpCompatShim.IsInMultiplayer)
+            return;
+
         if (result == null) return;
         if (!Settings.Get().AllowCustomConversation) return;
 

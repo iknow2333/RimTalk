@@ -267,7 +267,7 @@ public class DebugWindow : Window
         }
 
         _cachedActiveViewList = q.ToList();
-        _cachedActiveViewList.Sort((a, b) => a.CreatedTime.CompareTo(b.CreatedTime));
+        _cachedActiveViewList.Sort((a, b) => a.CreatedTick.CompareTo(b.CreatedTick));
     }
 
     private void DrawLeftPane(Rect rect)
@@ -475,8 +475,9 @@ public class DebugWindow : Window
         float currentX = 5f;
         int currentTick = GenTicks.TicksGame;
 
-        // 1. Time (HH:mm:ss to match main table)
-        Widgets.Label(new Rect(currentX, rowY, ARTimeWidth, RowHeight), req.CreatedTime.ToString("HH:mm:ss"));
+        // 1. Time (tick-based, converted to seconds)
+        var elapsedSeconds = (GenTicks.TicksGame - req.CreatedTick) / 60f;
+        Widgets.Label(new Rect(currentX, rowY, ARTimeWidth, RowHeight), $"T-{elapsedSeconds:F1}s");
         currentX += ARTimeWidth + ColumnPadding;
 
         // 2. Initiator
@@ -660,7 +661,7 @@ public class DebugWindow : Window
         }
 
         // Initialize or update temp strings if a new row is selected OR if the selected row is still generating
-        bool isGenerating = _selectedLog.Response == null || AIService.IsBusy(); 
+        bool isGenerating = _selectedLog.Response == null || AIService.IsBusy();
         if (_selectedLog.Id != _selectedRequestIdForTemp || isGenerating)
         {
             if (_selectedLog.Id != _selectedRequestIdForTemp)
@@ -668,7 +669,7 @@ public class DebugWindow : Window
                 _selectedRequestIdForTemp = _selectedLog.Id;
                 _expandedPromptSegmentIndices.Clear();
             }
-            
+
             _tempResponse = _selectedLog.Response ?? string.Empty;
             _tempPromptSegments = ResolvePromptSegments(_selectedLog);
             _tempPromptSegmentsText = FormatPromptSegments(_tempPromptSegments);
@@ -1130,7 +1131,7 @@ public class DebugWindow : Window
     {
         string translatedColumn = key.Translate();
         if (translatedColumn == key) translatedColumn = defaultLabel; // Fallback if key missing
-        
+
         string arrow = _sortColumn == key ? (_sortAscending ? " ▲" : " ▼") : "";
         if (Widgets.ButtonInvisible(rect))
         {
@@ -1353,36 +1354,36 @@ public class DebugWindow : Window
                 return _sortAscending
                     ? _pawnStates.OrderBy(p => p.Pawn.LabelShort)
                     : _pawnStates.OrderByDescending(p => p.Pawn.LabelShort);
-        
+
             case "RimTalk.DebugWindow.HeaderRequests":
                 return _sortAscending
                     ? _pawnStates.OrderBy(p =>
-                        _talkLogsByPawn.TryGetValue(p.Pawn.LabelShort, out var logs) 
+                        _talkLogsByPawn.TryGetValue(p.Pawn.LabelShort, out var logs)
                             ? logs.Count(r => r.IsFirstDialogue) : 0)
                     : _pawnStates.OrderByDescending(p =>
-                        _talkLogsByPawn.TryGetValue(p.Pawn.LabelShort, out var logs) 
+                        _talkLogsByPawn.TryGetValue(p.Pawn.LabelShort, out var logs)
                             ? logs.Count(r => r.IsFirstDialogue) : 0);
 
             case "RimTalk.DebugWindow.HeaderResponse":
                 return _sortAscending
                     ? _pawnStates.OrderBy(p => GetLastResponseForPawn(p.Pawn.LabelShort))
                     : _pawnStates.OrderByDescending(p => GetLastResponseForPawn(p.Pawn.LabelShort));
-        
+
             case "RimTalk.DebugWindow.HeaderStatus":
                 return _sortAscending
                     ? _pawnStates.OrderBy(p => p.CanDisplayTalk())
                     : _pawnStates.OrderByDescending(p => p.CanDisplayTalk());
-        
+
             case "RimTalk.DebugWindow.HeaderLastTalk":
                 return _sortAscending
                     ? _pawnStates.OrderBy(p => p.LastTalkTick)
                     : _pawnStates.OrderByDescending(p => p.LastTalkTick);
-        
+
             case "RimTalk.DebugWindow.HeaderChattiness":
                 return _sortAscending
                     ? _pawnStates.OrderBy(p => p.TalkInitiationWeight)
                     : _pawnStates.OrderByDescending(p => p.TalkInitiationWeight);
-        
+
             default:
                 return _pawnStates;
         }
@@ -1462,8 +1463,10 @@ public class DebugWindow : Window
 
         if (request.Initiator != null)
         {
-            foreach (var (role, message) in TalkHistory.GetMessageHistory(request.Initiator))
+            var history = TalkHistory.GetMessageHistory(request.Initiator);
+            foreach (var (role, message) in history)
             {
+                Log.Message($"[RimTalk][MP hist] DebugWindow history role={role} message={message}");
                 segments.Add(new PromptMessageSegment("chat-history", "RimTalk.DebugWindow.ChatHistory".Translate(), role, message));
             }
         }
@@ -1540,7 +1543,7 @@ public class DebugWindow : Window
             sb.Append(": ");
             sb.AppendLine(roleLabel);
             sb.AppendLine(segment.Content ?? "");
-            
+
             // Add blank line between messages (except after the last one)
             if (i < segments.Count - 1)
                 sb.AppendLine();
@@ -1557,7 +1560,7 @@ public class DebugWindow : Window
         }
 
         TalkRequest debugRequest = _selectedLog.TalkRequest.Clone();
-        
+
         // If we have modified segments in the UI, apply them to the resent request
         if (_tempPromptSegments != null && _tempPromptSegments.Count > 0)
         {

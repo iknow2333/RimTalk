@@ -160,7 +160,10 @@ public class PersonaEditorWindow : Window
 
         if (Widgets.ButtonText(rollGenButton, "RimTalk.PersonaEditor.RollGen".Translate()))
         {
+            Rand.PushState();
+            Rand.Seed = Gen.HashCombineInt(Find.TickManager?.TicksGame ?? 0, Constant.Personalities.Length);
             PersonalityData rollGenData = Constant.Personalities.RandomElement();
+            Rand.PopState();
             _editingPersonality = rollGenData.Persona;
             _talkInitiationWeight = rollGenData.Chattiness;
         }

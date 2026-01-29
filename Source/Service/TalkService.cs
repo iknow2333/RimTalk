@@ -3,12 +3,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using RimTalk.Data;
+using RimTalk.Multiplayer;
 using RimTalk.Prompt;
 using RimTalk.Source.Data;
 using RimTalk.UI;
 using RimTalk.Util;
 using RimWorld;
 using Verse;
+using MP = Multiplayer.API.MP;
 using Cache = RimTalk.Data.Cache;
 using Logger = RimTalk.Util.Logger;
 
@@ -25,15 +27,21 @@ public static class TalkService
     /// </summary>
     public static bool GenerateTalk(TalkRequest talkRequest)
     {
+        // In multiplayer, only host generates AI responses
+        if (MpCompatShim.IsInMultiplayer && !MpCompatShim.IsHosting)
+            return false;
+
         // Guard clauses to prevent generation when the feature is disabled or the AI service is busy.
         var settings = Settings.Get();
         if (!settings.IsEnabled || !CommonUtil.ShouldAiBeActiveOnSpeed()) return false;
         if (settings.GetActiveConfig() == null) return false;
         if (AIService.IsBusy()) return false;
 
+        if (talkRequest?.Initiator == null) return false;
+
         PawnState pawn1 = Cache.Get(talkRequest.Initiator);
         if (!talkRequest.TalkType.IsFromUser() && (pawn1 == null || !pawn1.CanGenerateTalk())) return false;
-        
+
         if (!settings.AllowSimultaneousConversations && AnyPawnHasPendingResponses()) return false;
 
         // Ensure the recipient is valid and capable of talking.
@@ -44,33 +52,52 @@ public static class TalkService
         }
 
         List<Pawn> nearbyPawns = PawnSelector.GetAllNearByPawns(talkRequest.Initiator);
-        if (talkRequest.Recipient.IsPlayer()) nearbyPawns.Insert(0, talkRequest.Recipient);
+        if (talkRequest.Recipient != null && talkRequest.Recipient.IsPlayer()) nearbyPawns.Insert(0, talkRequest.Recipient);
         var (status, isInDanger) = talkRequest.Initiator.GetPawnStatusFull(nearbyPawns);
-        
+
         // Avoid spamming generations if the pawn's status hasn't changed recently.
         if (!talkRequest.TalkType.IsFromUser() && status == pawn1.LastStatus && pawn1.RejectCount < 2)
         {
             pawn1.RejectCount++;
             return false;
         }
-        
+
         if (!talkRequest.TalkType.IsFromUser() && isInDanger) talkRequest.TalkType = TalkType.Urgent;
-        
+
         pawn1.RejectCount = 0;
         pawn1.LastStatus = status;
 
         // Select the most relevant pawns for the conversation context.
-        List<Pawn> pawns = new List<Pawn> { talkRequest.Initiator, talkRequest.Recipient }
-            .Where(p => p != null)
-            .Concat(nearbyPawns.Where(p =>
-            {
-                var pawnState = Cache.Get(p);
-                return pawnState.CanDisplayTalk() && pawnState.TalkResponses.Empty();
-            }))
-            .Distinct()
-            .Take(settings.Context.MaxPawnContextCount)
-            .ToList();
-        
+        // Use deterministic seed in multiplayer for consistent pawn selection.
+        var randPushed = false;
+        if (MpCompatShim.IsInMultiplayer)
+        {
+            Rand.PushState();
+            Rand.Seed = Find.TickManager.TicksGame;
+            randPushed = true;
+        }
+
+        List<Pawn> pawns;
+        try
+        {
+            pawns = new List<Pawn> { talkRequest.Initiator, talkRequest.Recipient }
+                .Where(p => p != null)
+                .Concat((nearbyPawns ?? Enumerable.Empty<Pawn>()).Where(p =>
+                {
+                    if (p == null) return false;
+                    var pawnState = Cache.Get(p);
+                    return pawnState != null && pawnState.CanDisplayTalk() && pawnState.TalkResponses.Empty();
+                }))
+                .Distinct()
+                .Take(settings.Context.MaxPawnContextCount)
+                .ToList();
+        }
+        finally
+        {
+            if (randPushed)
+                Rand.PopState();
+        }
+
         if (pawns.Count == 1) talkRequest.IsMonologue = true;
 
         if (!settings.AllowMonologue && talkRequest.IsMonologue && !talkRequest.TalkType.IsFromUser())
@@ -78,12 +105,12 @@ public static class TalkService
 
         // Delegate prompt assembly to PromptManager (Handles Simple/Advanced modes and fallbacks)
         talkRequest.PromptMessages = PromptManager.Instance.BuildMessages(talkRequest, pawns, status);
-        
+
         // Offload the AI request and processing to a background thread to avoid blocking the game's main thread.
         Task.Run(() => GenerateAndProcessTalkAsync(talkRequest));
 
         pawn1.MarkRequestSpoken(talkRequest);
-        
+
         return true;
     }
 
@@ -96,7 +123,7 @@ public static class TalkService
         try
         {
             Cache.Get(initiator).IsGeneratingTalk = true;
-            
+
             var receivedResponses = new List<TalkResponse>();
 
             // Call the streaming chat service. The callback is executed as each piece of dialogue is parsed.
@@ -105,6 +132,12 @@ public static class TalkService
                     Logger.Debug($"Streamed: {talkResponse}");
 
                     PawnState pawnState = Cache.GetByName(talkResponse.Name);
+                    if (pawnState == null)
+                    {
+                        Logger.Warning($"Cannot find pawn state for name: {talkResponse.Name}");
+                        return;
+                    }
+
                     talkResponse.Name = pawnState.Pawn.LabelShort;
 
                     // Link replies to the previous message in the conversation.
@@ -156,7 +189,8 @@ public static class TalkService
     /// </summary>
     public static void DisplayTalk()
     {
-        foreach (Pawn pawn in Cache.Keys)
+        // Sort by thingIDNumber for deterministic iteration in multiplayer
+        foreach (Pawn pawn in Cache.Keys.OrderBy(p => p.thingIDNumber))
         {
             PawnState pawnState = Cache.Get(pawn);
             if (pawnState == null || pawnState.TalkResponses.Empty()) continue;
@@ -167,6 +201,7 @@ public static class TalkService
                 pawnState.TalkResponses.RemoveAt(0);
                 continue;
             }
+
 
             // Skip this talk if its parent was ignored or the pawn is currently unable to speak.
             if (TalkHistory.IsTalkIgnored(talk.ParentTalkId) || !pawnState.CanDisplayTalk())
@@ -184,10 +219,13 @@ public static class TalkService
 
             // Enforce a delay for replies to make conversations feel more natural.
             int parentTalkTick = TalkHistory.GetSpokenTick(talk.ParentTalkId);
-            if (parentTalkTick == -1 || !CommonUtil.HasPassed(parentTalkTick, replyInterval)) continue;
+            if (parentTalkTick == -1 || !CommonUtil.HasPassed(parentTalkTick, replyInterval))
+            {
+                continue;
+            }
 
             CreateInteraction(pawn, talk);
-            
+
             break; // Display only one talk per tick to prevent overwhelming the screen.
         }
     }
@@ -205,7 +243,7 @@ public static class TalkService
 
         return talkResponse.Text;
     }
-    
+
     /// <summary>
     /// Calls AI service directly for debug purpose.
     /// </summary>
@@ -220,15 +258,17 @@ public static class TalkService
     private static TalkResponse ConsumeTalk(PawnState pawnState)
     {
         // Failsafe check
-        if (pawnState.TalkResponses.Empty()) 
+        if (pawnState.TalkResponses.Empty())
             return new TalkResponse(TalkType.Other, null!, "");
-        
+
         var talkResponse = pawnState.TalkResponses.First();
         pawnState.TalkResponses.Remove(talkResponse);
         TalkHistory.AddSpoken(talkResponse.Id);
         var apiLog = ApiHistory.GetApiLog(talkResponse.Id);
         if (apiLog != null)
+        {
             apiLog.SpokenTick = GenTicks.TicksGame;
+        }
 
         Overlay.NotifyLogUpdated();
         return talkResponse;
@@ -236,23 +276,74 @@ public static class TalkService
 
     private static void CreateInteraction(Pawn pawn, TalkResponse talk)
     {
-        // Create the interaction log entry, which triggers the display of the talk bubble in-game.
-        InteractionDef intDef = DefDatabase<InteractionDef>.GetNamed("RimTalkInteraction");
-        var recipient = talk.GetTarget() ?? pawn;
-        var playLogEntryInteraction = new PlayLogEntry_RimTalkInteraction(intDef, pawn, recipient, null);
-
-        Find.PlayLog.Add(playLogEntryInteraction);
-
-        if (Settings.Get().ApplyMoodAndSocialEffects && pawn != recipient)
+        // In multiplayer, skip PlayLog creation (causes UniqueID desync)
+        // Instead, manually handle queue cleanup and state updates
+        if (MpCompatShim.IsInMultiplayer)
         {
-            var interactionType = talk.GetInteractionType();
-            var memory = interactionType.GetThoughtDef();
-            if (memory != null)
+            var pawnState = Cache.Get(pawn);
+            if (pawnState != null && pawnState.TalkResponses.Contains(talk))
             {
-                recipient.needs?.mood?.thoughts?.memories?.TryGainMemory(memory, pawn);
-                if (interactionType is InteractionType.Chat)
+                // Manual queue cleanup (normally done by ConsumeTalk via GetTalk)
+                pawnState.TalkResponses.Remove(talk);
+                TalkHistory.AddSpoken(talk.Id);
+
+                // Client-side: create ApiLog for synced TalkResponse (for Overlay display)
+                var apiLog = ApiHistory.GetApiLog(talk.Id);
+                if (apiLog == null)
                 {
-                    pawn.needs?.mood?.thoughts?.memories?.TryGainMemory(memory, recipient);
+                    // 客户端接收到TalkResponse但没有对应的ApiLog
+                    // 创建一个简化的ApiLog用于展示
+                    apiLog = ApiHistory.AddClientResponse(talk, pawn);
+                }
+
+                if (apiLog != null)
+                {
+                    apiLog.SpokenTick = GenTicks.TicksGame;
+                }
+
+                Overlay.NotifyLogUpdated();
+                pawnState.LastTalkTick = GenTicks.TicksGame;
+            }
+
+            // Apply mood/social effects (same logic as below)
+            // var recipient = talk.GetTarget() ?? pawn;
+            // if (Settings.Get().ApplyMoodAndSocialEffects && pawn != recipient)
+            // {
+            //     var interactionType = talk.GetInteractionType();
+            //     var memory = interactionType.GetThoughtDef();
+            //     if (memory != null)
+            //     {
+            //         recipient.needs?.mood?.thoughts?.memories?.TryGainMemory(memory, pawn);
+            //         if (interactionType is InteractionType.Chat)
+            //         {
+            //             pawn.needs?.mood?.thoughts?.memories?.TryGainMemory(memory, recipient);
+            //         }
+            //     }
+            // }
+
+            // Skip PlayLog creation to avoid UniqueID desync
+            return;
+        }
+        else
+        {
+            // Singleplayer: create normal PlayLog entry
+            InteractionDef intDef = DefDatabase<InteractionDef>.GetNamed("RimTalkInteraction");
+            var recipient = talk.GetTarget() ?? pawn;
+            var playLogEntryInteraction = new PlayLogEntry_RimTalkInteraction(intDef, pawn, recipient, null);
+
+            Find.PlayLog.Add(playLogEntryInteraction);
+
+            if (Settings.Get().ApplyMoodAndSocialEffects && pawn != recipient)
+            {
+                var interactionType = talk.GetInteractionType();
+                var memory = interactionType.GetThoughtDef();
+                if (memory != null)
+                {
+                    recipient.needs?.mood?.thoughts?.memories?.TryGainMemory(memory, pawn);
+                    if (interactionType is InteractionType.Chat)
+                    {
+                        pawn.needs?.mood?.thoughts?.memories?.TryGainMemory(memory, recipient);
+                    }
                 }
             }
         }

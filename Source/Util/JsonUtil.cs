@@ -4,6 +4,7 @@ using System.IO;
 using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Text.RegularExpressions;
+using RimTalk.Data;
 
 namespace RimTalk.Util;
 
@@ -100,6 +101,51 @@ public static class JsonUtil
             sanitized = $"[{sanitized}]";
         }
 
+        // Fix invalid GUIDs produced by LLM when parsing TalkResponse payloads
+        if (IsTalkResponseType(targetType))
+        {
+            sanitized = FixTalkResponseGuids(sanitized);
+        }
+
         return sanitized;
+    }
+
+    private static bool IsTalkResponseType(Type targetType)
+    {
+        if (targetType == typeof(TalkResponse)) return true;
+
+        if (targetType.IsArray && targetType.GetElementType() == typeof(TalkResponse))
+            return true;
+
+        if (typeof(IEnumerable).IsAssignableFrom(targetType) && targetType.IsGenericType)
+        {
+            var args = targetType.GetGenericArguments();
+            if (args.Length == 1 && args[0] == typeof(TalkResponse)) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Replaces invalid GUID strings in TalkResponse JSON with fresh GUIDs so deserialization succeeds.
+    /// </summary>
+    private static string FixTalkResponseGuids(string json)
+    {
+        return Regex.Replace(json,
+            "\"(id|parentTalkId)\"\\s*:\\s*\"([^\"]*)\"",
+            match =>
+            {
+                var key = match.Groups[1].Value;
+                var value = match.Groups[2].Value;
+
+                if (Guid.TryParse(value, out var parsed))
+                {
+                    return $"\"{key}\":\"{parsed}\"";
+                }
+
+                var replacement = Guid.NewGuid();
+                return $"\"{key}\":\"{replacement}\"";
+            },
+            RegexOptions.IgnoreCase);
     }
 }

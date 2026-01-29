@@ -22,15 +22,17 @@ public class PawnSelector
     private static List<Pawn> GetNearbyPawnsInternal(Pawn pawn1, Pawn pawn2 = null,
         DetectionType detectionType = DetectionType.Hearing, bool onlyTalkable = false, int maxResults = 10)
     {
+        if (pawn1 == null) return new List<Pawn>();
+
         float baseRange = detectionType == DetectionType.Hearing ? HearingRange : ViewingRange;
         PawnCapacityDef capacityDef = detectionType == DetectionType.Hearing
             ? PawnCapacityDefOf.Hearing
             : PawnCapacityDefOf.Sight;
 
         return Cache.Keys
-            .Where(p => p != pawn1 && p != pawn2)
+            .Where(p => p != null && p != pawn1 && p != pawn2)
             .Where(p => !onlyTalkable || Cache.Get(p).CanGenerateTalk())
-            .Where(p => p.health.capacities.GetLevel(capacityDef) > 0.0)
+            .Where(p => p.health?.capacities != null && p.health.capacities.GetLevel(capacityDef) > 0.0)
             .Where(p =>
             {
                 var room = p.GetRoom();
@@ -75,7 +77,8 @@ public class PawnSelector
         // Find the pawn with the highest priority task:
         // 1. The oldest user-initiated talk request (absolute priority).
         // 2. Pawns that can talk normally (for fallback).
-        foreach (var pawn in Cache.Keys)
+        // Sort by thingIDNumber for deterministic iteration in multiplayer
+        foreach (var pawn in Cache.Keys.OrderBy(p => p.thingIDNumber))
         {
             var pawnState = Cache.Get(pawn);
 

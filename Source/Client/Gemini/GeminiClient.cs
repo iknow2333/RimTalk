@@ -21,8 +21,6 @@ public class GeminiClient : IAIClient
     private static string GenerateEndpoint => $"{BaseUrl}/models/{CurrentModel}:generateContent?key={CurrentApiKey}";
     private static string StreamEndpoint => $"{BaseUrl}/models/{CurrentModel}:streamGenerateContent?alt=sse&key={CurrentApiKey}";
 
-    private readonly Random _random = new Random();
-
     public async Task<Payload> GetChatCompletionAsync(List<(Role role, string message)> prefixMessages, 
         List<(Role role, string message)> messages, 
         Action<Payload> onRequestPrepared = null)
@@ -174,11 +172,16 @@ public class GeminiClient : IAIClient
             
             if (CurrentModel.Contains("gemma"))
             {
+                Rand.PushState();
+                Rand.Seed = Gen.HashCombineInt(Find.TickManager?.TicksGame ?? 0, systemText.GetHashCode());
+                int seedPrefix = Rand.Int;
+                Rand.PopState();
+
                 // Gemma specific: Instruction becomes a separate USER turn with random seed
-                contents.Add(new Content 
-                { 
-                    Role = "user", 
-                    Parts = new List<Part> { new Part { Text = $"{_random.Next()} {systemText}" } } 
+                contents.Add(new Content
+                {
+                    Role = "user",
+                    Parts = new List<Part> { new Part { Text = $"{seedPrefix} {systemText}" } }
                 });
             }
             else

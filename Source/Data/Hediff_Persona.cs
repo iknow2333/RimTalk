@@ -36,13 +36,17 @@ public class Hediff_Persona : Hediff
         if (pawn.health.hediffSet.GetFirstHediffOfDef(def) is not Hediff_Persona hediff)
         {
             hediff = (Hediff_Persona)HediffMaker.MakeHediff(def, pawn);
-        
-            // Assign a random personality on creation
-            PersonalityData randomPersonalityData =
+
+            // Assign a random personality on creation (deterministic, RNG-isolated)
+            PersonalityData randomPersonalityData;
+            Rand.PushState();
+            Rand.Seed = Gen.HashCombineInt(pawn.thingIDNumber, Find.TickManager?.TicksGame ?? 0);
+            randomPersonalityData =
                 pawn.RaceProps.Humanlike ? Constant.Personalities.RandomElement()
                 : pawn.RaceProps.Animal ? Constant.PersonaAnimal
                 : pawn.RaceProps.IsMechanoid ? Constant.PersonaMech
                 : Constant.PersonaNonHuman;
+            Rand.PopState();
             hediff.Personality = randomPersonalityData.Persona;
         
             if (pawn.IsSlave || pawn.IsPrisoner || pawn.IsVisitor() || pawn.IsEnemy())
@@ -70,9 +74,13 @@ public class Hediff_Persona : Hediff
     {
         string key = $"{thought.def.defName}_{thought.CurStageIndex}";
         int currentTick = Find.TickManager.TicksGame;
-    
+
         // Randomize interval from 1 to 2.5 days
-        int randomInterval = Random.Range(60000, 150000);
+        int randomInterval;
+        Rand.PushState();
+        Rand.Seed = Gen.HashCombineInt(currentTick, thought.pawn.thingIDNumber);
+        randomInterval = Rand.RangeInclusive(60000, 150000);
+        Rand.PopState();
     
         if (_spokenThoughtTicks.TryGetValue(key, out int lastTick))
         {

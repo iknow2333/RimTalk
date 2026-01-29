@@ -9,12 +9,12 @@ namespace RimTalk.Data;
 
 public class ApiLog(string name, TalkRequest talkRequest, string response, Payload payload, DateTime timestamp, Channel channel)
 {
-    
+
     public enum State
     {
         None, Pending, Ignored, Spoken, Failed
     }
-    public Guid Id { get; } = Guid.NewGuid();
+    public Guid Id { get; set; } = Guid.NewGuid();
     public int ConversationId { get; set; }
     public TalkRequest TalkRequest { get; set; } = talkRequest ?? new TalkRequest(null, null);
     public string Name { get; set; } = name;

@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using RimTalk.Patch;
 using RimTalk.Source.Data;
@@ -24,7 +23,8 @@ public class TalkRequest(string prompt, Pawn initiator, Pawn recipient = null, T
     public Pawn Recipient { get; set; } = recipient;
     public int MapId { get; set; }
     public int CreatedTick { get; set; } = GenTicks.TicksGame;
-    public DateTime CreatedTime { get; set; } = DateTime.Now; 
+    // CreatedTime removed - use CreatedTick for multiplayer compatibility
+    // To get elapsed seconds: (GenTicks.TicksGame - CreatedTick) / 60f
     public int FinishedTick { get; set; } = -1; 
     public RequestStatus Status { get; set; } = RequestStatus.Pending;
     public bool IsMonologue;

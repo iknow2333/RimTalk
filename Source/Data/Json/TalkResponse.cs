@@ -1,49 +1,69 @@
 #nullable enable
 using System;
 using System.Runtime.Serialization;
+using Multiplayer.API;
+using RimTalk.Multiplayer;
 using RimTalk.Source.Data;
 using Verse;
 
 namespace RimTalk.Data;
 
 [DataContract]
-public class TalkResponse(TalkType talkType, string name, string text) : IJsonData
+public class TalkResponse : IJsonData
 {
-    public Guid Id { get; set; } = Guid.NewGuid();
+    [DataMember(Name = "id")]
+    public Guid Id { get; set; }
 
-    public TalkType TalkType { get; set; } = talkType;
-    
-    [DataMember(Name = "name")] 
-    public string Name { get; set; } = name;
+    [DataMember(Name = "talkType")]
+    public TalkType TalkType { get; set; }
 
-    [DataMember(Name = "text")] 
-    public string Text { get; set; } = text;
+    [DataMember(Name = "name")]
+    public string Name { get; set; }
+
+    [DataMember(Name = "text")]
+    public string Text { get; set; }
 
     [DataMember(Name = "act", EmitDefaultValue = false)]
     public string? InteractionRaw { get; set; }
 
     [DataMember(Name = "target", EmitDefaultValue = false)]
     public string? TargetName { get; set; }
-    
+
+    [DataMember(Name = "parentTalkId")]
     public Guid ParentTalkId { get; set; }
-    
+
+    // Constructor with deterministic ID generation for multiplayer
+    public TalkResponse(TalkType talkType, string name, string text)
+    {
+        TalkType = talkType;
+        Name = name;
+        Text = text;
+
+        // Use deterministic ID in multiplayer, random GUID in singleplayer
+        if (MP.IsInMultiplayer)
+            Id = DeterministicIdGenerator.GenerateTalkResponseId();
+        else
+            Id = Guid.NewGuid();
+    }
+
     public bool IsReply()
     {
         return ParentTalkId != Guid.Empty;
     }
-    
+
     public string GetText()
     {
         return Text;
     }
-    
+
     public InteractionType GetInteractionType()
     {
-        if (string.IsNullOrWhiteSpace(InteractionRaw)) 
+        if (string.IsNullOrWhiteSpace(InteractionRaw))
             return InteractionType.None;
 
         return Enum.TryParse(InteractionRaw, true, out InteractionType result) ? result : InteractionType.None;
     }
+
     public Pawn? GetTarget()
     {
         return TargetName != null ? Cache.GetByName(TargetName)?.Pawn : null;

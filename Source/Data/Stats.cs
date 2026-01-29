@@ -3,6 +3,8 @@ using System.Collections.Generic;
 
 namespace RimTalk.Data;
 
+// WARNING: Stats is ONLY for UI display. NEVER use for game logic or synchronization!
+// 警告：Stats仅用于UI统计，不得用于任何同步逻辑！
 public static class Stats
 {
     // Cumulative totals

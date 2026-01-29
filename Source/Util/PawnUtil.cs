@@ -210,6 +210,8 @@ public static class PawnUtil
 
         foreach (var p in pawnsToScan)
         {
+            if (p == null) continue;
+
             string label = GetPawnLabel(p, relevantPawns, useOptimization);
             string extraStatus = "";
 
@@ -253,16 +255,20 @@ public static class PawnUtil
 
     private static HashSet<Pawn> CollectRelevantPawns(Pawn mainPawn, List<Pawn> nearbyPawns)
     {
-        var relevantPawns = new HashSet<Pawn> { mainPawn };
+        var relevantPawns = new HashSet<Pawn>();
 
-        if (mainPawn.CurJob != null)
-            AddJobTargetsToRelevantPawns(mainPawn.CurJob, relevantPawns);
+        if (mainPawn != null)
+        {
+            relevantPawns.Add(mainPawn);
+            if (mainPawn.CurJob != null)
+                AddJobTargetsToRelevantPawns(mainPawn.CurJob, relevantPawns);
+        }
 
         if (nearbyPawns != null)
         {
-            relevantPawns.UnionWith(nearbyPawns);
+            relevantPawns.UnionWith(nearbyPawns.Where(p => p != null));
 
-            foreach (var nearby in nearbyPawns.Where(p => p.CurJob != null))
+            foreach (var nearby in nearbyPawns.Where(p => p != null && p.CurJob != null))
                 AddJobTargetsToRelevantPawns(nearby.CurJob, relevantPawns);
         }
 
@@ -271,16 +277,20 @@ public static class PawnUtil
 
     private static string GetPawnLabel(Pawn pawn, HashSet<Pawn> relevantPawns, bool useOptimization)
     {
+        if (pawn == null) return "Unknown";
+
         if (useOptimization)
             return pawn.LabelShort;
 
-        return relevantPawns.Contains(pawn)
+        return relevantPawns != null && relevantPawns.Contains(pawn)
             ? ContextHelper.GetDecoratedName(pawn)
             : pawn.LabelShort;
     }
 
     private static string GetPawnActivity(Pawn pawn, HashSet<Pawn> relevantPawns, bool useOptimization)
     {
+        if (pawn == null) return "";
+
         string activity = pawn.GetActivity();
 
         if (useOptimization || string.IsNullOrEmpty(activity))

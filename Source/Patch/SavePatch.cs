@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
 using RimTalk.Data;
+using Multiplayer.API;
+using RimTalk.Multiplayer;
 using RimTalk.Util;
 using RimWorld;
 using Verse;
@@ -15,6 +17,10 @@ public static class SaveGamePatch
     [HarmonyPrefix]
     public static void PreSaveGame()
     {
+        // In multiplayer, skip PlayLog scanning (no RimTalkInteraction entries created)
+        if (MpCompatShim.IsInMultiplayer)
+            return;
+
         try
         {
             var entries = Find.PlayLog?.AllEntries;

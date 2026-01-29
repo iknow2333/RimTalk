@@ -1,10 +1,11 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using Multiplayer.API;
+using RimTalk.Multiplayer;
 using RimTalk.Util;
 using RimWorld;
 using Verse;
-using Random = System.Random;
 
 namespace RimTalk.Data;
 
@@ -14,9 +15,6 @@ public static class Cache
     private static readonly ConcurrentDictionary<Pawn, PawnState> PawnCache = new();
 
     private static readonly ConcurrentDictionary<string, Pawn> NameCache = new();
-
-    // This Random instance is still needed for the weighted selection method.
-    private static readonly Random Random = new();
 
     public static IEnumerable<Pawn> Keys => PawnCache.Keys;
     public static Pawn GetPlayer() => _playerPawn;
@@ -177,16 +175,27 @@ public static class Cache
 
         if (effectiveTotalWeight <= 0) return null;
 
+        int seed = Gen.HashCombineInt(Find.TickManager?.TicksGame ?? 0, pawnList.Count);
+
         // 4. Absolute Probability Check
         // If the total weight of the colony is low (e.g. everyone sleeping or shy),
         // we might return null to simulate silence.
-        if (effectiveTotalWeight < 1.0 && Random.NextDouble() > effectiveTotalWeight)
+        float silenceRoll;
+        Rand.PushState();
+        Rand.Seed = seed;
+        silenceRoll = Rand.Value;
+        Rand.PopState();
+        if (effectiveTotalWeight < 1.0 && silenceRoll > effectiveTotalWeight)
         {
             return null;
         }
 
         // 5. Select Pawn
-        var randomWeight = Random.NextDouble() * effectiveTotalWeight;
+        double randomWeight;
+        Rand.PushState();
+        Rand.Seed = Gen.HashCombineInt(seed, 397);
+        randomWeight = Rand.Value * effectiveTotalWeight;
+        Rand.PopState();
         var cumulativeWeight = 0.0;
 
         foreach (var pawn in pawnList)
@@ -213,8 +222,15 @@ public static class Cache
 
     public static void InitializePlayerPawn()
     {
+        // Disable virtual player pawn in multiplayer
+        if (MP.IsInMultiplayer)
+        {
+            _playerPawn = null;
+            return;
+        }
+
         if (Current.Game == null || Settings.Get().PlayerName == _playerPawn?.Name.ToStringShort) return;
-        
+
         _playerPawn = PawnGenerator.GeneratePawn(PawnKindDefOf.Colonist);
         _playerPawn.Name = new NameSingle(Settings.Get().PlayerName);
         PawnCache[_playerPawn] = new PawnState(_playerPawn);
